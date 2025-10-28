@@ -15,6 +15,63 @@ public class FlutterMidiProPlugin: NSObject, FlutterPlugin {
     let instance = FlutterMidiProPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
   }
+  
+  public override init() {
+    super.init()
+    setupAudioSessionNotifications()
+  }
+  
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
+  
+  private func setupAudioSessionNotifications() {
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleAudioSessionInterruption),
+      name: AVAudioSession.interruptionNotification,
+      object: AVAudioSession.sharedInstance()
+    )
+  }
+  
+  @objc private func handleAudioSessionInterruption(notification: Notification) {
+    guard let userInfo = notification.userInfo,
+          let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+          let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+      return
+    }
+    
+    switch type {
+    case .began:
+      // Interruption began - audio engines will be stopped automatically by the system
+      break
+    case .ended:
+      // Interruption ended - restart all audio engines
+      guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else {
+        return
+      }
+      let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+      if options.contains(.shouldResume) {
+        restartAudioEngines()
+      }
+    @unknown default:
+      break
+    }
+  }
+  
+  private func restartAudioEngines() {
+    for (sfId, engines) in audioEngines {
+      for (index, engine) in engines.enumerated() {
+        if !engine.isRunning {
+          do {
+            try engine.start()
+          } catch {
+            print("Failed to restart audio engine for sfId \(sfId), channel \(index): \(error)")
+          }
+        }
+      }
+    }
+  }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {

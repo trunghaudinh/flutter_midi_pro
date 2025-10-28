@@ -67,3 +67,8 @@
 
 - Sustain added.
 - stopAllNotes method updated to turn off sustain before stopping notes.
+
+## 3.1.7
+
+- Fixed audio playback not resuming after audio session interruptions on iOS/macOS (e.g., when returning from full-screen video ads).
+- Added automatic audio engine restart when audio session interruption ends.
