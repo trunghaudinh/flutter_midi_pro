@@ -9,6 +9,28 @@ std::map<int, fluid_settings_t*> settings = {};
 std::map<int, int> soundfonts = {};
 int nextSfId = 1;
 
+namespace {
+fluid_synth_t* findSynth(int sfId) {
+    auto it = synths.find(sfId);
+    return it != synths.end() ? it->second : nullptr;
+}
+
+fluid_audio_driver_t* findDriver(int sfId) {
+    auto it = drivers.find(sfId);
+    return it != drivers.end() ? it->second : nullptr;
+}
+
+fluid_settings_t* findSettings(int sfId) {
+    auto it = settings.find(sfId);
+    return it != settings.end() ? it->second : nullptr;
+}
+
+int findSoundfont(int sfId) {
+    auto it = soundfonts.find(sfId);
+    return it != soundfonts.end() ? it->second : -1;
+}
+}
+
 extern "C" JNIEXPORT int JNICALL
 Java_com_melihhakanpektas_flutter_1midi_1pro_FlutterMidiProPlugin_loadSoundfont(JNIEnv* env, jclass clazz, jstring path, jint bank, jint program) {
     settings[nextSfId] = new_fluid_settings();
@@ -36,52 +58,83 @@ Java_com_melihhakanpektas_flutter_1midi_1pro_FlutterMidiProPlugin_loadSoundfont(
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_melihhakanpektas_flutter_1midi_1pro_FlutterMidiProPlugin_selectInstrument(JNIEnv* env, jclass clazz, jint sfId, jint channel, jint bank, jint program) {
-    fluid_synth_program_select(synths[sfId], channel, soundfonts[sfId], bank, program);
+    fluid_synth_t* synth = findSynth(sfId);
+    int soundfont = findSoundfont(sfId);
+    if (synth == nullptr || soundfont == -1) return;
+    fluid_synth_program_select(synth, channel, soundfont, bank, program);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_melihhakanpektas_flutter_1midi_1pro_FlutterMidiProPlugin_playNote(JNIEnv* env, jclass clazz, jint channel, jint key, jint velocity, jint sfId) {
-    fluid_synth_noteon(synths[sfId], channel, key, velocity);
+    fluid_synth_t* synth = findSynth(sfId);
+    if (synth == nullptr) return;
+    fluid_synth_noteon(synth, channel, key, velocity);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_melihhakanpektas_flutter_1midi_1pro_FlutterMidiProPlugin_stopNote(JNIEnv* env, jclass clazz, jint channel, jint key, jint sfId) {
-    fluid_synth_noteoff(synths[sfId], channel, key);
+    fluid_synth_t* synth = findSynth(sfId);
+    if (synth == nullptr) return;
+    fluid_synth_noteoff(synth, channel, key);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_melihhakanpektas_flutter_1midi_1pro_FlutterMidiProPlugin_stopAllNotes(JNIEnv* env, jclass clazz, jint sfId) {
-    if (synths.find(sfId) == synths.end()) return;
+    fluid_synth_t* synth = findSynth(sfId);
+    if (synth == nullptr) return;
     // Sustain'i kapat ve tüm kanallar için All Sound Off gönder
     for (int ch = 0; ch < 16; ++ch) {
-        fluid_synth_cc(synths[sfId], ch, 64, 0); // Sustain off
-        fluid_synth_all_sounds_off(synths[sfId], ch); // Instant cut
+        fluid_synth_cc(synth, ch, 64, 0); // Sustain off
+        fluid_synth_all_sounds_off(synth, ch); // Instant cut
     }
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_melihhakanpektas_flutter_1midi_1pro_FlutterMidiProPlugin_controlChange(JNIEnv* env, jclass clazz, jint sfId, jint channel, jint controller, jint value) {
-    if (synths.find(sfId) == synths.end()) return;
-    fluid_synth_cc(synths[sfId], channel, controller, value);
+    fluid_synth_t* synth = findSynth(sfId);
+    if (synth == nullptr) return;
+    fluid_synth_cc(synth, channel, controller, value);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_melihhakanpektas_flutter_1midi_1pro_FlutterMidiProPlugin_unloadSoundfont(JNIEnv* env, jclass clazz, jint sfId) {
-    delete_fluid_audio_driver(drivers[sfId]);
-    delete_fluid_synth(synths[sfId]);
+    fluid_audio_driver_t* driver = findDriver(sfId);
+    fluid_synth_t* synth = findSynth(sfId);
+    fluid_settings_t* sfSettings = findSettings(sfId);
+
+    if (driver != nullptr) {
+        delete_fluid_audio_driver(driver);
+    }
+    if (synth != nullptr) {
+        delete_fluid_synth(synth);
+    }
+    if (sfSettings != nullptr) {
+        delete_fluid_settings(sfSettings);
+    }
+
     synths.erase(sfId);
     drivers.erase(sfId);
+    settings.erase(sfId);
     soundfonts.erase(sfId);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_melihhakanpektas_flutter_1midi_1pro_FlutterMidiProPlugin_dispose(JNIEnv* env, jclass clazz) {
     for (auto const& x : synths) {
-        delete_fluid_audio_driver(drivers[x.first]);
-        delete_fluid_synth(synths[x.first]);
-        delete_fluid_settings(settings[x.first]);
+        fluid_audio_driver_t* driver = findDriver(x.first);
+        fluid_settings_t* sfSettings = findSettings(x.first);
+        if (driver != nullptr) {
+            delete_fluid_audio_driver(driver);
+        }
+        if (x.second != nullptr) {
+            delete_fluid_synth(x.second);
+        }
+        if (sfSettings != nullptr) {
+            delete_fluid_settings(sfSettings);
+        }
     }
     synths.clear();
     drivers.clear();
+    settings.clear();
     soundfonts.clear();
 }

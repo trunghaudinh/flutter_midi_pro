@@ -18,6 +18,7 @@ public class FlutterMidiProPlugin: NSObject, FlutterPlugin {
   
   public override init() {
     super.init()
+    configureAudioSession()
     setupAudioSessionNotifications()
   }
   
@@ -32,6 +33,20 @@ public class FlutterMidiProPlugin: NSObject, FlutterPlugin {
       name: AVAudioSession.interruptionNotification,
       object: AVAudioSession.sharedInstance()
     )
+  }
+
+  private func configureAudioSession() {
+    #if os(iOS)
+    let session = AVAudioSession.sharedInstance()
+    do {
+      try session.setCategory(.playback, mode: .default, options: [])
+      try session.setPreferredSampleRate(44_100)
+      try session.setPreferredIOBufferDuration(0.0058)
+      try session.setActive(true)
+    } catch {
+      print("Failed to configure AVAudioSession: \(error)")
+    }
+    #endif
   }
   
   @objc private func handleAudioSessionInterruption(notification: Notification) {
@@ -149,8 +164,11 @@ public class FlutterMidiProPlugin: NSObject, FlutterPlugin {
         let channel = args["channel"] as! Int
         let bank = args["bank"] as! Int
         let program = args["program"] as! Int
-        let soundfontSampler = soundfontSamplers[sfId]![channel]
-        let soundfontUrl = soundfontURLs[sfId]!
+        guard let soundfontSampler = soundfontSamplers[sfId]?[channel],
+              let soundfontUrl = soundfontURLs[sfId] else {
+            result(FlutterError(code: "SOUND_FONT_NOT_FOUND", message: "Soundfont/channel not found", details: nil))
+            return
+        }
         do {
             let isPercussion = (bank == 128)
             let bankMSB: UInt8 = isPercussion ? UInt8(kAUSampler_DefaultPercussionBankMSB) : UInt8(kAUSampler_DefaultMelodicBankMSB)
@@ -169,7 +187,10 @@ public class FlutterMidiProPlugin: NSObject, FlutterPlugin {
         let note = args["key"] as! Int
         let velocity = args["velocity"] as! Int
         let sfId = args["sfId"] as! Int
-        let soundfontSampler = soundfontSamplers[sfId]![channel]
+        guard let soundfontSampler = soundfontSamplers[sfId]?[channel] else {
+            result(FlutterError(code: "SOUND_FONT_NOT_FOUND", message: "Soundfont/channel not found", details: nil))
+            return
+        }
         soundfontSampler.startNote(UInt8(note), withVelocity: UInt8(velocity), onChannel: UInt8(channel))
         result(nil)
     case "stopNote":
@@ -177,7 +198,10 @@ public class FlutterMidiProPlugin: NSObject, FlutterPlugin {
         let channel = args["channel"] as! Int
         let note = args["key"] as! Int
         let sfId = args["sfId"] as! Int
-        let soundfontSampler = soundfontSamplers[sfId]![channel]
+        guard let soundfontSampler = soundfontSamplers[sfId]?[channel] else {
+            result(FlutterError(code: "SOUND_FONT_NOT_FOUND", message: "Soundfont/channel not found", details: nil))
+            return
+        }
         soundfontSampler.stopNote(UInt8(note), onChannel: UInt8(channel))
         result(nil)
     case "unloadSoundfont":
@@ -203,6 +227,7 @@ public class FlutterMidiProPlugin: NSObject, FlutterPlugin {
         }
         audioEngines = [:]
         soundfontSamplers = [:]
+        soundfontURLs = [:]
         result(nil)
     default:
       result(FlutterMethodNotImplemented)

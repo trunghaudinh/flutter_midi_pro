@@ -1,14 +1,11 @@
 package com.melihhakanpektas.flutter_midi_pro
 
-import android.content.Context
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
-import android.media.AudioManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -43,10 +40,8 @@ class FlutterMidiProPlugin: FlutterPlugin, MethodCallHandler {
   }
 
   private lateinit var channel : MethodChannel
-  private lateinit var flutterPluginBinding: FlutterPlugin.FlutterPluginBinding
 
   override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-    this.flutterPluginBinding = flutterPluginBinding
     channel = MethodChannel(flutterPluginBinding.binaryMessenger, "flutter_midi_pro")
     channel.setMethodCallHandler(this)
   }  
@@ -57,12 +52,7 @@ class FlutterMidiProPlugin: FlutterPlugin, MethodCallHandler {
           val path = call.argument<String>("path") as String
           val bank = call.argument<Int>("bank")?:0
           val program = call.argument<Int>("program")?:0
-          val audioManager = flutterPluginBinding.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-          
-          // Sesi mute yapma
-          audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0)
-          
-          // Soundfont yükleme işlemi (senkron, bloke eden çağrı)
+
           val sfId = loadSoundfont(path, bank, program)
           delay(250)
           
