@@ -52,6 +52,45 @@ private enum PluginLoadError: Error {
   case audioEngineStartFailed(String)
 }
 
+enum AudioSessionRecoveryAction: Equatable {
+  case none
+  case reconfigureAndRestart
+
+  static func interruption(_ userInfo: [AnyHashable: Any]?) -> AudioSessionRecoveryAction {
+    guard let userInfo,
+          let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+          let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+      return .none
+    }
+
+    guard type == .ended else {
+      return .none
+    }
+
+    guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else {
+      return .reconfigureAndRestart
+    }
+
+    let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+    return options.contains(.shouldResume) ? .reconfigureAndRestart : .none
+  }
+
+  static func routeChange(_ userInfo: [AnyHashable: Any]?) -> AudioSessionRecoveryAction {
+    guard let userInfo,
+          let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+          let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
+      return .none
+    }
+
+    switch reason {
+    case .newDeviceAvailable, .oldDeviceUnavailable, .routeConfigurationChange:
+      return .reconfigureAndRestart
+    default:
+      return .none
+    }
+  }
+}
+
 public class FlutterMidiProPlugin: NSObject, FlutterPlugin {
   private let channelCount = 16
   private let workQueue = DispatchQueue(label: "flutter_midi_pro.audio.work", qos: .userInitiated)
@@ -170,6 +209,18 @@ public class FlutterMidiProPlugin: NSObject, FlutterPlugin {
       name: AVAudioSession.interruptionNotification,
       object: AVAudioSession.sharedInstance()
     )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleAudioSessionRouteChange),
+      name: AVAudioSession.routeChangeNotification,
+      object: AVAudioSession.sharedInstance()
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleMediaServicesWereReset),
+      name: AVAudioSession.mediaServicesWereResetNotification,
+      object: AVAudioSession.sharedInstance()
+    )
   }
 
   private func configureAudioSession() {
@@ -187,28 +238,25 @@ public class FlutterMidiProPlugin: NSObject, FlutterPlugin {
   }
 
   @objc private func handleAudioSessionInterruption(notification: Notification) {
-    guard let userInfo = notification.userInfo,
-          let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
-          let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+    recoverAudioSessionIfNeeded(AudioSessionRecoveryAction.interruption(notification.userInfo))
+  }
+
+  @objc private func handleAudioSessionRouteChange(notification: Notification) {
+    recoverAudioSessionIfNeeded(AudioSessionRecoveryAction.routeChange(notification.userInfo))
+  }
+
+  @objc private func handleMediaServicesWereReset(_: Notification) {
+    recoverAudioSessionIfNeeded(.reconfigureAndRestart)
+  }
+
+  private func recoverAudioSessionIfNeeded(_ action: AudioSessionRecoveryAction) {
+    guard action == .reconfigureAndRestart else {
       return
     }
 
-    switch type {
-    case .began:
-      break
-    case .ended:
-      var shouldResume = true
-      if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
-        let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-        shouldResume = options.contains(.shouldResume)
-      }
-
-      if shouldResume {
-        configureAudioSession()
-        restartAudioEngines()
-      }
-    @unknown default:
-      break
+    workQueue.async {
+      self.configureAudioSession()
+      self.restartAudioEngines()
     }
   }
 

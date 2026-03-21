@@ -22,4 +22,33 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(state.samplers.count, 16)
     XCTAssertNotNil(state.engine)
   }
+
+  func testAudioSessionRecoveryResumesOnInterruptionEndWhenResumeFlagIsSet() {
+    let userInfo: [AnyHashable: Any] = [
+      AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
+      AVAudioSessionInterruptionOptionKey: AVAudioSession.InterruptionOptions.shouldResume.rawValue,
+    ]
+
+    XCTAssertEqual(
+      AudioSessionRecoveryAction.interruption(userInfo),
+      .reconfigureAndRestart
+    )
+  }
+
+  func testAudioSessionRecoveryIgnoresInterruptionEndWhenResumeFlagIsMissing() {
+    let userInfo: [AnyHashable: Any] = [
+      AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
+      AVAudioSessionInterruptionOptionKey: UInt(0),
+    ]
+
+    XCTAssertEqual(AudioSessionRecoveryAction.interruption(userInfo), .none)
+  }
+
+  func testAudioSessionRecoveryReconfiguresForRouteChangesThatAffectOutput() {
+    let userInfo: [AnyHashable: Any] = [
+      AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue
+    ]
+
+    XCTAssertEqual(AudioSessionRecoveryAction.routeChange(userInfo), .reconfigureAndRestart)
+  }
 }
