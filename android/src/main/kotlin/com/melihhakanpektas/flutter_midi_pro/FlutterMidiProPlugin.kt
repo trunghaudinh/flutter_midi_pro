@@ -8,6 +8,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import android.content.Context
+import android.media.AudioManager
 
 /** FlutterMidiProPlugin */
 class FlutterMidiProPlugin: FlutterPlugin, MethodCallHandler {
@@ -40,9 +43,11 @@ class FlutterMidiProPlugin: FlutterPlugin, MethodCallHandler {
   }
 
   private lateinit var channel : MethodChannel
+  private var applicationContext: Context? = null
 
   override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     channel = MethodChannel(flutterPluginBinding.binaryMessenger, "flutter_midi_pro")
+    applicationContext = flutterPluginBinding.applicationContext
     channel.setMethodCallHandler(this)
   }  
  override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -57,7 +62,7 @@ class FlutterMidiProPlugin: FlutterPlugin, MethodCallHandler {
           delay(250)
           
           // Sesi tekrar açma
-          audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
+          (applicationContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager)?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
           
           // Sonucu ana thread'de Flutter'a iletme
           withContext(Dispatchers.Main) {
@@ -132,5 +137,6 @@ class FlutterMidiProPlugin: FlutterPlugin, MethodCallHandler {
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     channel.setMethodCallHandler(null)
+    applicationContext = null
   }
 }
