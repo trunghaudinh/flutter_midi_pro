@@ -18,9 +18,46 @@ class RunnerTests: XCTestCase {
   }
 
   func testSoundfontStateBuildsSingleEngineAndSixteenSamplers() {
-    let state = SoundfontState.makeEmpty(channelCount: 16)
+    let state = SoundfontState.makeEmpty(
+      channelCount: 16,
+      url: URL(fileURLWithPath: "/tmp/test.sf2"),
+      initialConfiguration: SamplerConfiguration(bank: 0, program: 0)
+    )
     XCTAssertEqual(state.samplers.count, 16)
+    XCTAssertEqual(state.samplerConfigurations.count, 16)
     XCTAssertNotNil(state.engine)
+  }
+
+  func testSoundfontStateBuildsSamplersWithPerChannelConfigurations() {
+    let configurations = (0..<16).map { SamplerConfiguration(bank: 0, program: $0) }
+
+    let state = SoundfontState.makeEmpty(
+      channelCount: 16,
+      url: URL(fileURLWithPath: "/tmp/test.sf2"),
+      samplerConfigurations: configurations
+    )
+
+    XCTAssertEqual(state.samplers.count, 16)
+    XCTAssertEqual(state.samplerConfigurations.map(\.program), Array(0..<16))
+  }
+
+  func testPluginLoadErrorDescribesInvalidSamplerConfigurationCount() {
+    let error = PluginLoadError.invalidSamplerConfigurationCount(expected: 16, actual: 2)
+
+    XCTAssertEqual(
+      error.localizedDescription,
+      "Invalid sampler configuration count. Expected 16, got 2."
+    )
+  }
+
+  func testPluginLoadErrorDescribesMissingSoundfontState() {
+    XCTAssertEqual(PluginLoadError.soundfontStateUnavailable.localizedDescription, "Soundfont state unavailable.")
+  }
+
+  func testPluginLoadErrorDescribesInvalidMidiValue() {
+    let error = PluginLoadError.invalidMidiValue(name: "program", value: 200)
+
+    XCTAssertEqual(error.localizedDescription, "Invalid MIDI value for program: 200.")
   }
 
   func testAudioSessionRecoveryResumesOnInterruptionEndWhenResumeFlagIsSet() {
